@@ -41,6 +41,7 @@
 
 %module gsswrapper
 %{
+    #include <krb5.h>
     #include <gssapi.h>
     #include "gsswrapper_wrap.h"
 
@@ -1483,6 +1484,29 @@ gss_inquire_mech_for_saslname(
     gss_OID *           /* mech_type */
 );
 
+/*
+ * Import krb5.i interface definitions
+ */
+%include "src/swig/krb5.i"
+
+/*
+===========================================================================
+Pulled in from gssapi_krb5.h, with minor modifications for SWIG.
+===========================================================================
+*/
+
+OM_uint32 KRB5_CALLCONV
+gss_krb5_import_cred(OM_uint32 *OUTPUT,
+                     krb5_ccache,
+                     krb5_principal,
+                     krb5_keytab,
+                     gss_cred_id_t *);
+
+OM_uint32 KRB5_CALLCONV
+gss_krb5_set_allowable_enctypes(OM_uint32 *OUTPUT,
+                                gss_cred_id_t,
+                                OM_uint32 nEnctypes,
+                                krb5_enctype *enctypes);
 
 /*
 ===========================================================================
