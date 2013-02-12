@@ -1,4 +1,4 @@
-/* 
+/*
  * Copyright (C) 2012 by the Massachusetts Institute of Technology.
  * All rights reserved.
  *
@@ -29,24 +29,30 @@
  */
 package edu.mit.jgss;
 
+import java.security.AccessController;
+import java.security.PrivilegedAction;
+
+import javax.security.auth.Subject;
+
 import org.ietf.jgss.GSSCredential;
 import org.ietf.jgss.GSSException;
 import org.ietf.jgss.Oid;
 import org.ietf.jgss.GSSName;
 
+import edu.mit.jgss.krb5.KerberosCredentials;
 import edu.mit.jgss.swig.*;
 
 public class GSSCredentialImpl implements GSSCredential {
-    
+
     /* representing our underlying SWIG-wrapped gss_cred_id_t object */
     private gss_cred_id_t_desc internGSSCred = new gss_cred_id_t_desc();
-   
-    /* has this cred been destroyed? */ 
+
+    /* has this cred been destroyed? */
     private boolean invalid = false;
 
     public void dispose() throws GSSException {
-      
-        if (!invalid) { 
+
+        if (!invalid) {
             long[] min_status = {0};
             long ret = 0;
 
@@ -59,7 +65,7 @@ public class GSSCredentialImpl implements GSSCredential {
         }
 
     }
-    
+
     public GSSName getName() throws GSSException {
 
         long maj_status = 0;
@@ -69,14 +75,14 @@ public class GSSCredentialImpl implements GSSCredential {
         int ret = 0;
         gss_name_t_desc name = new gss_name_t_desc();
         gss_OID_set_desc temp_mech_set = new gss_OID_set_desc();
-       
+
         if(invalid) {
-            throw new GSSException((int) gsswrapper.GSS_S_DEFECTIVE_CREDENTIAL, 
+            throw new GSSException((int) gsswrapper.GSS_S_DEFECTIVE_CREDENTIAL,
                     0, "credential has been disposed, no longer valid");
-        } 
+        }
 
         GSSNameImpl tmpName = new GSSNameImpl();
-        
+
         maj_status = gsswrapper.gss_inquire_cred(min_status,
                 this.internGSSCred, name, lifetime, cred_usage,
                 temp_mech_set);
@@ -93,7 +99,7 @@ public class GSSCredentialImpl implements GSSCredential {
         return tmpName;
 
     }
-    
+
     public GSSName getName(Oid mechOID) throws GSSException {
 
         if(invalid) {
@@ -106,16 +112,16 @@ public class GSSCredentialImpl implements GSSCredential {
 
         return canoniName;
     }
-    
+
     public int getRemainingLifetime() throws GSSException {
-        
+
         long maj_status = 0;
         long[] min_status = {0};
         long[] lifetime = {0};
         int[] cred_usage = {0};
         gss_name_t_desc name = new gss_name_t_desc();
         gss_OID_set_desc temp_mech_set = new gss_OID_set_desc();
-       
+
         if(invalid) {
             throw new GSSException((int) gsswrapper.GSS_S_DEFECTIVE_CREDENTIAL,
                     0, "credential has been disposed, no longer valid");
@@ -134,9 +140,9 @@ public class GSSCredentialImpl implements GSSCredential {
         if (lifetime[0] == 4294967295L)
             return GSSCredential.INDEFINITE_LIFETIME;
         return (int)lifetime[0];
-       
+
     }
-   
+
     public int getRemainingInitLifetime(Oid mech) throws GSSException {
 
         long maj_status = 0;
@@ -158,7 +164,7 @@ public class GSSCredentialImpl implements GSSCredential {
         if (maj_status != gsswrapper.GSS_S_COMPLETE) {
             throw new GSSExceptionImpl((int) maj_status, (int) min_status[0]);
         }
-        
+
         if (cred_usage[0] == GSSCredential.INITIATE_ONLY ||
             cred_usage[0] == GSSCredential.INITIATE_AND_ACCEPT) {
 
@@ -171,16 +177,16 @@ public class GSSCredentialImpl implements GSSCredential {
             return 0;
         }
     }
-    
+
     public int getRemainingAcceptLifetime(Oid mech) throws GSSException {
-        
+
         long maj_status = 0;
         long[] min_status = {0};
         long[] init_lifetime = {0};
         long[] accept_lifetime = {0};
         int[] cred_usage = {0};
         gss_name_t_desc name = new gss_name_t_desc();
-        
+
         if(invalid) {
             throw new GSSException((int) gsswrapper.GSS_S_DEFECTIVE_CREDENTIAL,
                     0, "credential has been disposed, no longer valid");
@@ -193,7 +199,7 @@ public class GSSCredentialImpl implements GSSCredential {
         if (maj_status != gsswrapper.GSS_S_COMPLETE) {
             throw new GSSExceptionImpl((int) maj_status, (int) min_status[0]);
         }
-        
+
         if (cred_usage[0] == GSSCredential.ACCEPT_ONLY ||
             cred_usage[0] == GSSCredential.INITIATE_AND_ACCEPT) {
 
@@ -207,16 +213,16 @@ public class GSSCredentialImpl implements GSSCredential {
         }
 
     }
-    
+
     public int getUsage() throws GSSException {
-        
+
         long maj_status = 0;
         long[] min_status = {0};
         long[] lifetime = {0};
         int[] cred_usage = {0};
         gss_name_t_desc name = new gss_name_t_desc();
         gss_OID_set_desc temp_mech_set = new gss_OID_set_desc();
-        
+
         if(invalid) {
             throw new GSSException((int) gsswrapper.GSS_S_DEFECTIVE_CREDENTIAL,
                     0, "credential has been disposed, no longer valid");
@@ -233,23 +239,23 @@ public class GSSCredentialImpl implements GSSCredential {
         return cred_usage[0];
 
     }
-    
+
     public int getUsage(Oid mechOID) throws GSSException {
-        
+
         long maj_status = 0;
         long[] min_status = {0};
         long[] init_lifetime = {0};
         long[] accept_lifetime = {0};
         int[] cred_usage = {0};
         gss_name_t_desc name = new gss_name_t_desc();
-        
+
         if(invalid) {
             throw new GSSException((int) gsswrapper.GSS_S_DEFECTIVE_CREDENTIAL,
                     0, "credential has been disposed, no longer valid");
         }
 
         maj_status = gsswrapper.gss_inquire_cred_by_mech(min_status,
-                this.internGSSCred, mechOID.getNativeOid(), name, 
+                this.internGSSCred, mechOID.getNativeOid(), name,
                 init_lifetime, accept_lifetime, cred_usage);
 
         if (maj_status != gsswrapper.GSS_S_COMPLETE) {
@@ -259,21 +265,21 @@ public class GSSCredentialImpl implements GSSCredential {
         return cred_usage[0];
 
     }
-    
+
     public Oid[] getMechs() throws GSSException {
-        
+
         long maj_status = 0;
         long[] min_status = {0};
         long[] lifetime = {0};
         int[] cred_usage = {0};
         gss_name_t_desc name = new gss_name_t_desc();
         gss_OID_set_desc temp_mech_set = new gss_OID_set_desc();
-        
+
         if(invalid) {
             throw new GSSException((int) gsswrapper.GSS_S_DEFECTIVE_CREDENTIAL,
                     0, "credential has been disposed, no longer valid");
         }
-        
+
         maj_status = gsswrapper.gss_inquire_cred(min_status,
                 this.internGSSCred, name, lifetime, cred_usage,
                 temp_mech_set);
@@ -292,7 +298,7 @@ public class GSSCredentialImpl implements GSSCredential {
 
         return mechs;
     }
-    
+
     public void add(GSSName aName, int initLifetime, int acceptLifetime,
             Oid mech, int usage) throws GSSException {
 
@@ -300,7 +306,7 @@ public class GSSCredentialImpl implements GSSCredential {
         long[] min_status = {0};
         long[] lifetime = {0};
         int[] cred_usage = {0};
-        
+
         if(invalid) {
             throw new GSSException((int) gsswrapper.GSS_S_DEFECTIVE_CREDENTIAL,
                     0, "credential has been disposed, no longer valid");
@@ -316,7 +322,7 @@ public class GSSCredentialImpl implements GSSCredential {
         }
 
     }
-    
+
     public boolean equals(Object another) {
 
         if (! (another instanceof GSSCredential))
@@ -356,9 +362,18 @@ public class GSSCredentialImpl implements GSSCredential {
         long[] time_rec = {0};
         long inTimeReq;
 
+        /* initialize internal gss_cred_id_t_desc */
+        internGSSCred = new gss_cred_id_t_desc();
+
+        if (possiblyUseSubjectCreds(desiredName, desiredMechs, credUsage)) {
+            System.err.println("XXX used subject creds");
+            return this;
+        }
+        System.err.println("XXX did not use subject creds");
+
         gss_name_t_desc dName;
         gss_OID_set_desc dMechs;
-        
+
         /* handle null GSSName arg */
         if (desiredName != null) {
             dName = desiredName.getInternGSSName();
@@ -390,15 +405,12 @@ public class GSSCredentialImpl implements GSSCredential {
             dMechs = gsswrapper.GSS_C_NO_OID_SET;
         }
 
-        /* initialize internal gss_cred_id_t_desc */
-        internGSSCred = new gss_cred_id_t_desc();
-        
         /* acquire cred */
         maj_status = gsswrapper.gss_acquire_cred(min_status,
-                dName, 
-                inTimeReq, 
-                dMechs, 
-                credUsage, 
+                dName,
+                inTimeReq,
+                dMechs,
+                credUsage,
                 internGSSCred,
                 null, time_rec);
 
@@ -412,12 +424,12 @@ public class GSSCredentialImpl implements GSSCredential {
     }
 
     GSSCredential acquireCred(int usage) throws GSSException {
-        
+
         return acquireCred((GSSName) null,
                 GSSCredential.DEFAULT_LIFETIME, (Oid[]) null, usage);
 
     }
-    
+
     public gss_cred_id_t_desc getInternGSSCred() {
         return this.internGSSCred;
     }
@@ -442,5 +454,79 @@ public class GSSCredentialImpl implements GSSCredential {
         }
     }
 
+    /**
+     * Attempt to import credentials from the Subject.
+     *
+     * If this routine succees, these credentials are now valid.
+     *
+     * @param desiredName the principal
+     * @param usage initiate, accept, or both
+     * @return whether the subject creds could be used
+     */
+    private boolean possiblyUseSubjectCreds(final GSSName desiredName,
+            final Oid[] desiredMechs, final int usage)
+                throws GSSException {
+        // TODO(nater): validate that the desired mechs include Kerberos
+        // or are set to the default
+        KerberosCredentials subjectCreds = findCredsInSubject(
+                desiredName.toString(), usage);
+        if (subjectCreds == null) {
+            return false;
+        }
+
+        // TODO(nater): validate that the creds we looked up are valid
+        // for the desired usage
+
+        long maj_status = 0;
+        long [] min_status = {0};
+        gsswrapper.gss_krb5_import_cred(min_status, subjectCreds.getCcache(),
+                null, null, internGSSCred);
+        if (maj_status == 0) {
+            this.invalid = false;
+            return true;
+        }
+        return false;
+    }
+
+    /**
+     * Search the subject for matching credentials.
+     *
+     * We don't need to check whether the mechanism matches because
+     * we're the only ones populating the subject with these kinds of
+     * credentials.
+     *
+     * @param principal the principal to match (may be null)
+     * @param usage the intended usage (init, accept, or both)
+     */
+    private KerberosCredentials findCredsInSubject(final String principal,
+            final int usage) {
+        final Subject subject =
+                Subject.getSubject(AccessController.getContext());
+        KerberosCredentials creds = AccessController.doPrivileged(
+                new PrivilegedAction<KerberosCredentials>() {
+                    public KerberosCredentials run() {
+                        return findCredsHelper(subject, principal, usage);
+                    }
+                });
+        return creds;
+    }
+
+    /*
+     * Helper for searching the subject.
+     */
+    private KerberosCredentials findCredsHelper(final Subject subject,
+            final String principal, final int usage) {
+        for (Object o: subject
+                .getPrivateCredentials(KerberosCredentials.class)) {
+            KerberosCredentials cred = (KerberosCredentials) o;
+            // TODO(nater): match usage
+
+            // TODO(nater): match principal
+
+            // For now just returning the first
+            return cred;
+        }
+        return null;
+    }
 }
 
