@@ -130,6 +130,22 @@ krb5_cc_store_cred(krb5_context,
                    krb5_ccache,
                    krb5_creds *);
 
+krb5_error_code KRB5_CALLCONV
+krb5_kt_start_seq_get(krb5_context,
+                      krb5_keytab,
+                      krb5_kt_cursor *);
+
+krb5_error_code KRB5_CALLCONV
+krb5_kt_next_entry(krb5_context,
+                   krb5_keytab,
+                   krb5_keytab_entry *,
+                   krb5_kt_cursor *);
+
+krb5_error_code KRB5_CALLCONV
+krb5_kt_end_seq_get(krb5_context,
+                    krb5_keytab,
+                    krb5_kt_cursor *);
+
 /*
  * Clear the above handler
  */

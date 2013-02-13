@@ -34,7 +34,10 @@ import java.io.IOException;
 import java.lang.Object;
 import java.lang.String;
 import java.net.InetAddress;
+import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Date;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
@@ -43,6 +46,7 @@ import javax.security.auth.callback.Callback;
 import javax.security.auth.callback.NameCallback;
 import javax.security.auth.callback.PasswordCallback;
 import javax.security.auth.callback.UnsupportedCallbackException;
+import javax.security.auth.kerberos.KerberosKey;
 import javax.security.auth.kerberos.KerberosPrincipal;
 import javax.security.auth.kerberos.KerberosTicket;
 import javax.security.auth.login.LoginException;
@@ -56,7 +60,9 @@ import edu.mit.jgss.swig.krb5_ccache_handle;
 import edu.mit.jgss.swig.krb5_context_handle;
 import edu.mit.jgss.swig.krb5_creds;
 import edu.mit.jgss.swig.krb5_keyblock;
+import edu.mit.jgss.swig.krb5_keytab_entry;
 import edu.mit.jgss.swig.krb5_keytab_handle;
+import edu.mit.jgss.swig.krb5_kt_cursor_handle;
 import edu.mit.jgss.swig.krb5_principal_data;
 import edu.mit.jgss.swig.krb5_ticket_times;
 
@@ -74,8 +80,14 @@ import edu.mit.jgss.swig.krb5_ticket_times;
  *  from the keytab. The default value is false. If the <code>keytab</code>
  *  is not set then the module will attempt to use the default keytab file,
  *  which is a Kerberos implementation depdendent configuration setting.
+ *  </dd>
  *  <dt><b><code>keyTab</code></b>:</td>
  *  <dd>Set this to the path to the principal's keytab file.</dd>
+ *  <td><b><code>storeKey</code></b>:</td>
+ *  <dd>
+ *  Set this to true if the private Kerberos keys should be stored in
+ *  the Subject.
+ *  </dd>
  * </blockquote>
  * </dl>
  *
@@ -100,6 +112,9 @@ public final class Krb5LoginModule implements LoginModule {
     /** The keytab file path. */
     private String keyTab = null;
 
+    /** Whether to store keys in the Subject. */
+    private boolean storeKey = false;
+
     /** Whether a call to login succeeded. */
     private boolean loginSuccess = false;
 
@@ -111,6 +126,29 @@ public final class Krb5LoginModule implements LoginModule {
 
     /** TGT extracted from creds */
     private KerberosTicket tgt = null;
+
+    /** Stashed private keys */
+    private List<KerberosKey> stashedKeys = null;
+
+    /** Ticket flags */
+    private static final int FORWARDABLE = 1;
+    private static final int FORWARDED = 2;
+    private static final int PROXIABLE = 3;
+    private static final int PROXY = 4;
+    private static final int MAY_POSTDATE = 5;
+    private static final int POSTDATED = 6;
+    private static final int INVALID = 7;
+    private static final int RENEWABLE = 8;
+    private static final int INITIAL = 9;
+    private static final int PRE_AUTH = 10;
+    private static final int HW_AUTH = 11;
+
+    /** Enctype strings, for KerberosKey password constructor. */
+    private static final String[] encAlgorithms = {
+        "DES",
+        "ArcFourHmac",
+        "AES128",
+        "AES256" };
 
     /**
      * Initialize this module.
@@ -131,6 +169,7 @@ public final class Krb5LoginModule implements LoginModule {
         // Consume options
         useKeyTab = getBoolOption(options, "useKeyTab");
         keyTab = (String) options.get("keyTab");
+        storeKey = getBoolOption(options, "storeKey");
     }
 
     /**
@@ -153,6 +192,7 @@ public final class Krb5LoginModule implements LoginModule {
         // TODO(nater): for full parity with Sun's implementation, there
         // should be a system property where one can set the principal.
         String userName = doNameCallback();
+        String password = null;
 
         krb5_context_handle cleanupContext = null;
         krb5_context_handle context = null;
@@ -192,7 +232,7 @@ public final class Krb5LoginModule implements LoginModule {
                         /* in_tkt_service= */ null, /* options= */ null);
             } else {
                 // Try password-based authentication
-                String password = doPasswordCallback();
+                password = doPasswordCallback();
                 gsswrapper.krb5_get_init_creds_password(context,
                         kcreds, principal, password, /* prompter= */ null,
                         /* prompterData= */ null, /* startingIn= */ 0,
@@ -205,6 +245,10 @@ public final class Krb5LoginModule implements LoginModule {
             // Hold on to the credentials in this cache
             creds = new KerberosCredentials(context, ccache);
             tgt = krb5CredToTicket(kcreds, context);
+            if (storeKey) {
+                storeKeysInSubject(userName, password, context, keytab);
+            }
+
             // Forget about these; the rest will be freed below
             context = null;
             ccache = null;
@@ -266,12 +310,31 @@ public final class Krb5LoginModule implements LoginModule {
         privCreds.add(creds);
         // Store the TGT into the private store (for application compatibility)
         privCreds.add(tgt);
-
-        // TODO(nater): store keys
+        if (stashedKeys != null) {
+            for (KerberosKey key : stashedKeys) {
+                privCreds.add(key);
+            }
+        }
 
         // Remember that commit succeeded
         commitSuccess = true;
         return true;
+    }
+
+    /**
+     * Remove all stashed keys from the subject.
+     *
+     * TODO(nater): this is insufficient; these should also be destroyed.
+     */
+    private void removeStashedKeys() {
+        if (stashedKeys == null) {
+            return;
+        }
+        Set<Object> privCreds = subject.getPrivateCredentials();
+        for (KerberosKey key : stashedKeys) {
+            privCreds.remove(key);
+        }
+        stashedKeys = null;
     }
 
     /**
@@ -294,6 +357,7 @@ public final class Krb5LoginModule implements LoginModule {
             // the Destroyable interface and invoke dstroy (see logout, below)
             creds = null;
             tgt = null;
+            removeStashedKeys();
         } else {
             // Commit succeded, but we've already stored information into
             // the Subject, so that needs to be removed. Same logic as
@@ -322,9 +386,9 @@ public final class Krb5LoginModule implements LoginModule {
         subject.getPrivateCredentials().remove(creds);
         subject.getPrivateCredentials().remove(tgt);
         // TODO(nater): these should be destroyed, instead of waiting for gc
+        removeStashedKeys();
         creds = null;
         tgt = null;
-        // TODO(nater): when keys are added, also remove these
 
         // Reset state
         loginSuccess = false;
@@ -434,6 +498,81 @@ public final class Krb5LoginModule implements LoginModule {
     }
 
     /**
+     * Helper to store private keys in the subject.
+     *
+     * @param userName user principal
+     * @param password password (nullable)
+     * @param context kerberos library context
+     * @param keytab kerberos keytab (nullable)
+     * @throws LibKrb5Exception if an error occurs
+     */
+    private void storeKeysInSubject(final String userName,
+            final String password, final krb5_context_handle context,
+            final krb5_keytab_handle keytab) throws LibKrb5Exception {
+        ArrayList<KerberosKey> keys = new ArrayList();
+        KerberosPrincipal princ = new KerberosPrincipal(userName);
+
+        if (password != null) {
+            // Need to stash a key for every available enctype :/
+            for (final String algo : encAlgorithms) {
+                keys.add(new KerberosKey(princ, password.toCharArray(), algo));
+            }
+        }
+
+        if (keytab != null) {
+            keys.addAll(getKeytabKeys(userName, context, keytab));
+        }
+
+        stashedKeys = keys;
+    }
+
+    /**
+     * Extract keys from a keytab matching a principal.
+     *
+     * @param userName the principal
+     * @param context kerberos library context
+     * @param keytab the keytab handle
+     * @return the keys
+     * @throws LibKrb5Exception if an error occurs
+     */
+    private static List<KerberosKey> getKeytabKeys(final String userName,
+            final krb5_context_handle context, final krb5_keytab_handle keytab)
+            throws LibKrb5Exception {
+        ArrayList<KerberosKey> keys = new ArrayList();
+        krb5_kt_cursor_handle cursor = new krb5_kt_cursor_handle();
+        krb5_keytab_entry entry = new krb5_keytab_entry();
+
+        gsswrapper.krb5_kt_start_seq_get(context, keytab, cursor);
+
+        try {
+            while (true) {
+                try {
+                    gsswrapper.krb5_kt_next_entry(context, keytab, entry,
+                            cursor);
+                    krb5_keyblock keyblock = entry.getKey();
+                    KerberosKey key = new KerberosKey(
+                            new KerberosPrincipal(
+                                entry.getPrincipal().toString(context)),
+                            keyblock.getKey(), keyblock.getEnctype(),
+                            entry.getVno());
+                    keys.add(key);
+                } catch (LibKrb5Exception lke) {
+                    if (lke.getKrb5Error() == gsswrapper.KRB5_KT_END) {
+                        // Swallow this. Ugly mismatch between exception
+                        // throwing and return codes :/
+                        break;
+                    } else {
+                        throw lke;
+                    }
+                }
+            }
+        } finally {
+            gsswrapper.krb5_kt_end_seq_get(context, keytab, cursor);
+        }
+        return keys;
+    }
+
+    /**
      * Test for a boolean option.
      *
      * @param options the options map
@@ -471,19 +610,6 @@ public final class Krb5LoginModule implements LoginModule {
                 null // TODO(nater): populate addresses
                 );
     }
-
-    /** Ticket flags */
-    private static final int FORWARDABLE = 1;
-    private static final int FORWARDED = 2;
-    private static final int PROXIABLE = 3;
-    private static final int PROXY = 4;
-    private static final int MAY_POSTDATE = 5;
-    private static final int POSTDATED = 6;
-    private static final int INVALID = 7;
-    private static final int RENEWABLE = 8;
-    private static final int INITIAL = 9;
-    private static final int PRE_AUTH = 10;
-    private static final int HW_AUTH = 11;
 
     /**
      * Convert flags to a boolean array.

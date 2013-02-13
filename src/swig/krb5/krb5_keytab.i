@@ -57,6 +57,9 @@ typedef struct krb5_keytab_handle {
 } krb5_keytab_handle;
 %}
 
+/* Needed for keytab iteration */
+#define KRB5_KT_END (-1765328202L)
+
 /*
  * Helper for krb5_keytab typemaps
  */
@@ -128,3 +131,7 @@ static void keytab_to_java_keytab(JNIEnv *jenv, jobject java_keytab,
 %typemap(javaout) krb5_keytab {
     return $jnicall;
 }
+
+/* Some secondary types */
+%include "src/swig/krb5/krb5_keytab_cursor.i"
+%include "src/swig/krb5/krb5_keytab_entry.i"
