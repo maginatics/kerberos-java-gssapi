@@ -59,6 +59,7 @@ import edu.mit.jgss.swig.gsswrapper;
 import edu.mit.jgss.swig.krb5_ccache_handle;
 import edu.mit.jgss.swig.krb5_context_handle;
 import edu.mit.jgss.swig.krb5_creds;
+import edu.mit.jgss.swig.krb5_get_init_creds_opt;
 import edu.mit.jgss.swig.krb5_keyblock;
 import edu.mit.jgss.swig.krb5_keytab_entry;
 import edu.mit.jgss.swig.krb5_keytab_handle;
@@ -143,6 +144,9 @@ public final class Krb5LoginModule implements LoginModule {
     private static final int PRE_AUTH = 10;
     private static final int HW_AUTH = 11;
 
+    /** Request up to 30 days of renewal */
+    private static final int kRenewTime = 30 * 24 * 3600;
+
     /** Enctype strings, for KerberosKey password constructor. */
     private static final String[] encAlgorithms = {
         "DES",
@@ -199,6 +203,7 @@ public final class Krb5LoginModule implements LoginModule {
         krb5_keytab_handle keytab = null;
         krb5_principal_data principal = null;
         krb5_ccache_handle ccache = null;
+        krb5_get_init_creds_opt opts = null;
         krb5_creds kcreds = null;
 
         try {
@@ -223,20 +228,23 @@ public final class Krb5LoginModule implements LoginModule {
             // Initialize the cache
             gsswrapper.krb5_cc_initialize(context, ccache, principal);
 
-            // TODO(nater): set init creds options, like renewable duration
+            // Request renewable ticket
+            opts = new krb5_get_init_creds_opt();
+            gsswrapper.krb5_get_init_creds_opt_alloc(context, opts);
+            gsswrapper.krb5_get_init_creds_opt_set_renew_life(opts, kRenewTime);
 
             kcreds = new krb5_creds();
             if (keytab != null) {
                 gsswrapper.krb5_get_init_creds_keytab(context, kcreds,
                         principal, keytab, /* startingIn= */ 0,
-                        /* in_tkt_service= */ null, /* options= */ null);
+                        /* in_tkt_service= */ null, opts);
             } else {
                 // Try password-based authentication
                 password = doPasswordCallback();
                 gsswrapper.krb5_get_init_creds_password(context,
                         kcreds, principal, password, /* prompter= */ null,
                         /* prompterData= */ null, /* startingIn= */ 0,
-                        /* in_tkt_service= */ null, /* options= */ null);
+                        /* in_tkt_service= */ null, opts);
             }
 
             // Store credentials in the cache
@@ -260,6 +268,10 @@ public final class Krb5LoginModule implements LoginModule {
             if (kcreds != null) {
                 // No release method needed
                 kcreds = null;
+            }
+            if (opts != null) {
+                gsswrapper.krb5_get_init_creds_opt_free(context, opts);
+                opts = null;
             }
             if (ccache != null) {
                 gsswrapper.krb5_cc_destroy(cleanupContext, ccache);
