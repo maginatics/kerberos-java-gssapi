@@ -60,6 +60,36 @@ typedef struct krb5_principal_data {
 } krb5_principal_data, *krb5_principal;
 
 /*
+ * Convenience extension
+ */
+
+%newobject krb5_principal_data::toString(krb5_context context);
+%extend krb5_principal_data {
+    /*
+     * Convert a principal to a string.
+     * TODO(nater): it would be nice if this did not require a context :/
+     */
+    char * toString(krb5_context context) {
+        krb5_error_code err;
+        char *unparsed = NULL;
+        char *ret = NULL;
+        unsigned int size = 0;
+        if (!$self) {
+            return NULL;
+        }
+        err = krb5_unparse_name_ext(context, $self, &unparsed, &size);
+        if (err != 0) {
+            return NULL;
+        }
+        ret = (char *) malloc(size + 1);
+        memcpy(ret, unparsed, size);
+        ret[size] = 0;
+        krb5_free_unparsed_name(context, unparsed);
+        return ret;
+    }
+}
+
+/*
  * Helpers for marshalling
  */
 

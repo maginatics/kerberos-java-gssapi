@@ -39,7 +39,7 @@
  * Enctype types.
  */
 
-typedef int32_t krb5_enctype;
+typedef krb5_int32 krb5_enctype;
 
 /*
  * Enctypes defined in krb5.h

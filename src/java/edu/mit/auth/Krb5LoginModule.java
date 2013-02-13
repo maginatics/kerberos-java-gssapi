@@ -33,6 +33,8 @@ package edu.mit.auth;
 import java.io.IOException;
 import java.lang.Object;
 import java.lang.String;
+import java.net.InetAddress;
+import java.util.Date;
 import java.util.Map;
 import java.util.Set;
 
@@ -41,6 +43,8 @@ import javax.security.auth.callback.Callback;
 import javax.security.auth.callback.NameCallback;
 import javax.security.auth.callback.PasswordCallback;
 import javax.security.auth.callback.UnsupportedCallbackException;
+import javax.security.auth.kerberos.KerberosPrincipal;
+import javax.security.auth.kerberos.KerberosTicket;
 import javax.security.auth.login.LoginException;
 import javax.security.auth.spi.LoginModule;
 import javax.security.auth.Subject;
@@ -48,11 +52,13 @@ import javax.security.auth.Subject;
 import edu.mit.jgss.krb5.KerberosCredentials;
 import edu.mit.jgss.krb5.LibKrb5Exception;
 import edu.mit.jgss.swig.gsswrapper;
+import edu.mit.jgss.swig.krb5_ccache_handle;
 import edu.mit.jgss.swig.krb5_context_handle;
+import edu.mit.jgss.swig.krb5_creds;
+import edu.mit.jgss.swig.krb5_keyblock;
 import edu.mit.jgss.swig.krb5_keytab_handle;
 import edu.mit.jgss.swig.krb5_principal_data;
-import edu.mit.jgss.swig.krb5_ccache_handle;
-import edu.mit.jgss.swig.krb5_creds;
+import edu.mit.jgss.swig.krb5_ticket_times;
 
 /**
  * Authenticates users using MIT Kerberos.
@@ -70,8 +76,8 @@ import edu.mit.jgss.swig.krb5_creds;
  *  which is a Kerberos implementation depdendent configuration setting.
  *  <dt><b><code>keyTab</code></b>:</td>
  *  <dd>Set this to the path to the principal's keytab file.</dd>
- *  </blockquote>
- *  </dl>
+ * </blockquote>
+ * </dl>
  *
  *  NOTE: The configuration options for this module are in beta, and
  *  are subject to change.
@@ -102,6 +108,9 @@ public final class Krb5LoginModule implements LoginModule {
 
     /** Credentials store initialized by login. */
     private KerberosCredentials creds = null;
+
+    /** TGT extracted from creds */
+    private KerberosTicket tgt = null;
 
     /**
      * Initialize this module.
@@ -169,8 +178,7 @@ public final class Krb5LoginModule implements LoginModule {
 
             // TODO(nater): make cache type / location configurable
             ccache = new krb5_ccache_handle();
-            gsswrapper.krb5_cc_new_unique(context, "MEMORY", null,
-                    ccache);
+            gsswrapper.krb5_cc_new_unique(context, "MEMORY", null, ccache);
 
             // Initialize the cache
             gsswrapper.krb5_cc_initialize(context, ccache, principal);
@@ -196,6 +204,7 @@ public final class Krb5LoginModule implements LoginModule {
 
             // Hold on to the credentials in this cache
             creds = new KerberosCredentials(context, ccache);
+            tgt = krb5CredToTicket(kcreds, context);
             // Forget about these; the rest will be freed below
             context = null;
             ccache = null;
@@ -255,8 +264,10 @@ public final class Krb5LoginModule implements LoginModule {
         // Store KerberosCredentials object into the private store
         Set<Object> privCreds = subject.getPrivateCredentials();
         privCreds.add(creds);
+        // Store the TGT into the private store (for application compatibility)
+        privCreds.add(tgt);
 
-        // TODO(nater): store TGT and key(s)
+        // TODO(nater): store keys
 
         // Remember that commit succeeded
         commitSuccess = true;
@@ -282,6 +293,7 @@ public final class Krb5LoginModule implements LoginModule {
             // TODO(nater): this is insufficient; we should implement
             // the Destroyable interface and invoke dstroy (see logout, below)
             creds = null;
+            tgt = null;
         } else {
             // Commit succeded, but we've already stored information into
             // the Subject, so that needs to be removed. Same logic as
@@ -308,9 +320,11 @@ public final class Krb5LoginModule implements LoginModule {
 
         // Remove KerberosCredentials from the cred set
         subject.getPrivateCredentials().remove(creds);
+        subject.getPrivateCredentials().remove(tgt);
         // TODO(nater): these should be destroyed, instead of waiting for gc
         creds = null;
-        // TODO(nater): when keys and tickets are added, also remove these
+        tgt = null;
+        // TODO(nater): when keys are added, also remove these
 
         // Reset state
         loginSuccess = false;
@@ -429,5 +443,70 @@ public final class Krb5LoginModule implements LoginModule {
     private static boolean getBoolOption(final Map<String, ?> options,
             final String option) {
         return "true".equalsIgnoreCase((String) options.get(option));
+    }
+
+    /**
+     * Converts a Kerberos library credentials handle to a ticket.
+     *
+     * @param creds the kerberos credentials handle
+     * @param context the kerberos library context
+     * @return a ticket
+     * @throws LibKrb5Exception if an error occurs
+     */
+    private static KerberosTicket krb5CredToTicket(final krb5_creds kcreds,
+            final krb5_context_handle context) throws LibKrb5Exception {
+        krb5_keyblock keyblock = kcreds.getKeyblock();
+        krb5_ticket_times times = kcreds.getTimes();
+        return new KerberosTicket(
+                kcreds.getTicket().getData().getBytes(),
+                new KerberosPrincipal(kcreds.getClient().toString(context)),
+                new KerberosPrincipal(kcreds.getServer().toString(context)),
+                keyblock.getKey(),
+                keyblock.getEnctype(),
+                convertFlags(kcreds.getTicket_flags()),
+                new Date(times.getAuthtime() * 1000L),
+                new Date(times.getStarttime() * 1000L),
+                new Date(times.getEndtime() * 1000L),
+                new Date(times.getRenew_till() * 1000L),
+                null // TODO(nater): populate addresses
+                );
+    }
+
+    /** Ticket flags */
+    private static final int FORWARDABLE = 1;
+    private static final int FORWARDED = 2;
+    private static final int PROXIABLE = 3;
+    private static final int PROXY = 4;
+    private static final int MAY_POSTDATE = 5;
+    private static final int POSTDATED = 6;
+    private static final int INVALID = 7;
+    private static final int RENEWABLE = 8;
+    private static final int INITIAL = 9;
+    private static final int PRE_AUTH = 10;
+    private static final int HW_AUTH = 11;
+
+    /**
+     * Convert flags to a boolean array.
+     *
+     * The flag bit positions in RFC 4120 reflect network byte order.
+     *
+     * @param flags ticket flags
+     * @return the flags, as a boolean array
+     */
+    private static boolean[] convertFlags(final int kflags) {
+        final int kBits = 12;
+        boolean[] flags = new boolean[kBits];
+        flags[FORWARDABLE] = ((kflags & gsswrapper.TKT_FLG_FORWARDABLE) != 0);
+        flags[FORWARDED] = ((kflags & gsswrapper.TKT_FLG_FORWARDED) != 0);
+        flags[PROXIABLE] = ((kflags & gsswrapper.TKT_FLG_PROXIABLE) != 0);
+        flags[PROXY] = ((kflags & gsswrapper.TKT_FLG_PROXY) != 0);
+        flags[MAY_POSTDATE] = ((kflags & gsswrapper.TKT_FLG_MAY_POSTDATE) != 0);
+        flags[POSTDATED] = ((kflags & gsswrapper.TKT_FLG_POSTDATED) != 0);
+        flags[INVALID] = ((kflags & gsswrapper.TKT_FLG_INVALID) != 0);
+        flags[RENEWABLE] = ((kflags & gsswrapper.TKT_FLG_RENEWABLE) != 0);
+        flags[INITIAL] = ((kflags & gsswrapper.TKT_FLG_INITIAL) != 0);
+        flags[PRE_AUTH] = ((kflags & gsswrapper.TKT_FLG_PRE_AUTH) != 0);
+        flags[HW_AUTH] = ((kflags & gsswrapper.TKT_FLG_HW_AUTH) != 0);
+        return flags;
     }
 }

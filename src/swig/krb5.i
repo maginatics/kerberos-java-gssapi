@@ -47,8 +47,11 @@ typedef krb5_int32 krb5_deltat;
 %include "src/swig/krb5/krb5_context.i"
 %include "src/swig/krb5/krb5_creds.i"
 %include "src/swig/krb5/krb5_creds_opt.i"
+%include "src/swig/krb5/krb5_data.i"
 %include "src/swig/krb5/krb5_enctype.i"
+%include "src/swig/krb5/krb5_keyblock.i"
 %include "src/swig/krb5/krb5_keytab.i"
+%include "src/swig/krb5/krb5_ticket_times.i"
 %include "src/swig/krb5/krb5_principal.i"
 %include "src/swig/krb5/krb5_prompter.i"
 

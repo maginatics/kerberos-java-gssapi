@@ -36,8 +36,28 @@
  */
 
 /*
+ * Ticket flags
+ */
+#define TKT_FLG_FORWARDABLE             0x40000000
+#define TKT_FLG_FORWARDED               0x20000000
+#define TKT_FLG_PROXIABLE               0x10000000
+#define TKT_FLG_PROXY                   0x08000000
+#define TKT_FLG_MAY_POSTDATE            0x04000000
+#define TKT_FLG_POSTDATED               0x02000000
+#define TKT_FLG_INVALID                 0x01000000
+#define TKT_FLG_RENEWABLE               0x00800000
+#define TKT_FLG_INITIAL                 0x00400000
+#define TKT_FLG_PRE_AUTH                0x00200000
+#define TKT_FLG_HW_AUTH                 0x00100000
+#define TKT_FLG_TRANSIT_POLICY_CHECKED  0x00080000
+#define TKT_FLG_OK_AS_DELEGATE          0x00040000
+#define TKT_FLG_ENC_PA_REP              0x00010000
+#define TKT_FLG_ANONYMOUS               0x00008000
+
+/*
  * Credentials type
  */
+typedef krb5_int32 krb5_flags;
 typedef struct _krb5_creds {
     krb5_magic magic;
     krb5_principal client;              /**< client's principal identifier */
