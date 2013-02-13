@@ -128,6 +128,9 @@ public final class Krb5LoginModule implements LoginModule {
     /** TGT extracted from creds */
     private KerberosTicket tgt = null;
 
+    /** Kerberos principal */
+    private KerberosPrincipal princ = null;
+
     /** Stashed private keys */
     private List<KerberosKey> stashedKeys = null;
 
@@ -252,6 +255,7 @@ public final class Krb5LoginModule implements LoginModule {
 
             // Hold on to the credentials in this cache
             creds = new KerberosCredentials(context, ccache);
+            princ = new KerberosPrincipal(userName);
             tgt = krb5CredToTicket(kcreds, context);
             if (storeKey) {
                 storeKeysInSubject(userName, password, context, keytab);
@@ -320,8 +324,10 @@ public final class Krb5LoginModule implements LoginModule {
         // Store KerberosCredentials object into the private store
         Set<Object> privCreds = subject.getPrivateCredentials();
         privCreds.add(creds);
-        // Store the TGT into the private store (for application compatibility)
+        // Store TGT, principal, and possibly keys into the Subject,
+        // for application compatibility
         privCreds.add(tgt);
+        subject.getPrincipals().add(princ);
         if (stashedKeys != null) {
             for (KerberosKey key : stashedKeys) {
                 privCreds.add(key);
@@ -368,6 +374,7 @@ public final class Krb5LoginModule implements LoginModule {
             // TODO(nater): this is insufficient; we should implement
             // the Destroyable interface and invoke dstroy (see logout, below)
             creds = null;
+            princ = null;
             tgt = null;
             removeStashedKeys();
         } else {
@@ -397,9 +404,11 @@ public final class Krb5LoginModule implements LoginModule {
         // Remove KerberosCredentials from the cred set
         subject.getPrivateCredentials().remove(creds);
         subject.getPrivateCredentials().remove(tgt);
+        subject.getPrincipals().remove(princ);
         // TODO(nater): these should be destroyed, instead of waiting for gc
         removeStashedKeys();
         creds = null;
+        princ = null;
         tgt = null;
 
         // Reset state
@@ -522,7 +531,6 @@ public final class Krb5LoginModule implements LoginModule {
             final String password, final krb5_context_handle context,
             final krb5_keytab_handle keytab) throws LibKrb5Exception {
         ArrayList<KerberosKey> keys = new ArrayList();
-        KerberosPrincipal princ = new KerberosPrincipal(userName);
 
         if (password != null) {
             // Need to stash a key for every available enctype :/
