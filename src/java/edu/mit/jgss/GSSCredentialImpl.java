@@ -469,7 +469,7 @@ public class GSSCredentialImpl implements GSSCredential {
         // TODO(nater): validate that the desired mechs include Kerberos
         // or are set to the default
         KerberosCredentials subjectCreds = findCredsInSubject(
-                desiredName.toString(), usage);
+                (desiredName != null ? desiredName.toString() : null), usage);
         if (subjectCreds == null) {
             return false;
         }

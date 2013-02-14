@@ -110,9 +110,9 @@ public class GSSContextImpl implements GSSContext {
             this.credential = (GSSCredentialImpl) myCred;
             this.srcName = (GSSNameImpl) myCred.getName();
         } else {
-            /* create GSS_C_NO_CREDENTIAL */
+            /* Acquire default initiator creds */
             this.credential =  new GSSCredentialImpl();
-            this.credential.setInternGSSCred(null);
+            this.credential.acquireCred(GSSCredential.INITIATE_ONLY);
         }
 
         if (lifetime >= 0) {
