@@ -480,7 +480,7 @@ public class GSSCredentialImpl implements GSSCredential {
         long maj_status = 0;
         long [] min_status = {0};
         gsswrapper.gss_krb5_import_cred(min_status, subjectCreds.getCcache(),
-                null, null, internGSSCred);
+                null, subjectCreds.getKeytab(), internGSSCred);
         if (maj_status == 0) {
             this.invalid = false;
             return true;

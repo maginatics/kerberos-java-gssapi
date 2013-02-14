@@ -254,7 +254,7 @@ public final class Krb5LoginModule implements LoginModule {
             gsswrapper.krb5_cc_store_cred(context, ccache, kcreds);
 
             // Hold on to the credentials in this cache
-            creds = new KerberosCredentials(context, ccache);
+            creds = new KerberosCredentials(context, ccache, keytab);
             princ = new KerberosPrincipal(userName);
             tgt = krb5CredToTicket(kcreds, context);
             if (storeKey) {
@@ -264,6 +264,7 @@ public final class Krb5LoginModule implements LoginModule {
             // Forget about these; the rest will be freed below
             context = null;
             ccache = null;
+            keytab = null;
         } catch (LibKrb5Exception lke) {
             throw (LoginException) new LoginException("While authenticating: " +
                     lke.getMessage()).initCause(lke);

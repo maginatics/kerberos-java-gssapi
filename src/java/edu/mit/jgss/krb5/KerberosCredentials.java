@@ -33,6 +33,7 @@ package edu.mit.jgss.krb5;
 import edu.mit.jgss.swig.gsswrapper;
 import edu.mit.jgss.swig.krb5_context_handle;
 import edu.mit.jgss.swig.krb5_ccache_handle;
+import edu.mit.jgss.swig.krb5_keytab_handle;
 
 /**
  * Container for libkrb5 credentials (library context, ccache, etc.)
@@ -44,6 +45,9 @@ public final class KerberosCredentials {
     /** Credentials cache. */
     private final krb5_ccache_handle ccache;
 
+    /** Keytab handle. */
+    private final krb5_keytab_handle keytab;
+
     /**
      * Create a credentials object.
      *
@@ -51,9 +55,10 @@ public final class KerberosCredentials {
      * @param ccache the credentials cache
      */
     public KerberosCredentials(krb5_context_handle context,
-            krb5_ccache_handle ccache) {
+            krb5_ccache_handle ccache, krb5_keytab_handle keytab) {
         this.context = context;
         this.ccache = ccache;
+        this.keytab = keytab;
     }
 
     public krb5_context_handle getContext() {
@@ -64,12 +69,19 @@ public final class KerberosCredentials {
         return ccache;
     }
 
+    public krb5_keytab_handle getKeytab() {
+        return keytab;
+    }
+
     /*
      * Release JNI resources.
      */
     protected void finalize() throws Throwable {
         if (ccache != null && context != null) {
             gsswrapper.krb5_cc_destroy(context, ccache);
+        }
+        if (keytab != null && context != null) {
+            gsswrapper.krb5_kt_close(context, keytab);
         }
         if (context != null) {
             gsswrapper.krb5_free_context(context);
